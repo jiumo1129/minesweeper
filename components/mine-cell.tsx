@@ -1,5 +1,6 @@
-import React, { memo } from "react";
-import { Pressable, Text, StyleSheet, View } from "react-native";
+import React, { memo, useRef } from "react";
+import { Pressable, Text, StyleSheet, Animated, Platform } from "react-native";
+import * as Haptics from "expo-haptics";
 import type { Cell } from "@/hooks/use-minesweeper";
 
 const NUMBER_COLORS: Record<number, string> = {
@@ -17,20 +18,36 @@ interface MineCellProps {
   cell: Cell;
   size: number;
   onPress: () => void;
+  onLongPress: () => void;
   gameOver: boolean;
 }
 
-function MineCellComponent({ cell, size, onPress, gameOver }: MineCellProps) {
+function MineCellComponent({ cell, size, onPress, onLongPress, gameOver }: MineCellProps) {
   const fontSize = Math.max(size * 0.55, 10);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const getCellStyle = () => {
-    if (cell.state === "revealed") {
-      if (cell.isExploded) return [styles.cellBase, styles.cellExploded, { width: size, height: size }];
-      if (cell.isMine) return [styles.cellBase, styles.cellRevealedMine, { width: size, height: size }];
-      return [styles.cellBase, styles.cellRevealed, { width: size, height: size }];
+  const handleLongPress = () => {
+    // Trigger haptic feedback on long press
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
-    if (cell.state === "flagged") return [styles.cellBase, styles.cellHidden, { width: size, height: size }];
-    return [styles.cellBase, styles.cellHidden, { width: size, height: size }];
+    // Brief scale-down animation to signal long press registered
+    Animated.sequence([
+      Animated.timing(scaleAnim, { toValue: 0.85, duration: 80, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
+    ]).start();
+    onLongPress();
+  };
+
+  const getCellBorderStyle = () => {
+    if (cell.state === "revealed") {
+      return cell.isExploded
+        ? styles.cellExploded
+        : cell.isMine
+        ? styles.cellRevealedMine
+        : styles.cellRevealed;
+    }
+    return styles.cellHidden;
   };
 
   const getCellContent = () => {
@@ -43,7 +60,12 @@ function MineCellComponent({ cell, size, onPress, gameOver }: MineCellProps) {
       }
       if (cell.adjacentMines > 0) {
         return (
-          <Text style={[styles.number, { fontSize, color: NUMBER_COLORS[cell.adjacentMines] ?? "#212121" }]}>
+          <Text
+            style={[
+              styles.number,
+              { fontSize, color: NUMBER_COLORS[cell.adjacentMines] ?? "#212121" },
+            ]}
+          >
             {cell.adjacentMines}
           </Text>
         );
@@ -52,16 +74,31 @@ function MineCellComponent({ cell, size, onPress, gameOver }: MineCellProps) {
     return null;
   };
 
+  const isInteractable = !gameOver || cell.state === "revealed";
+
   return (
     <Pressable
-      onPress={onPress}
-      disabled={gameOver && cell.state !== "revealed"}
+      onPress={isInteractable ? onPress : undefined}
+      onLongPress={
+        // Long press only works on hidden/flagged cells (not revealed, not game over)
+        !gameOver && cell.state !== "revealed" ? handleLongPress : undefined
+      }
+      delayLongPress={350}
       style={({ pressed }) => [
-        ...getCellStyle(),
+        styles.cellBase,
+        getCellBorderStyle(),
+        { width: size, height: size },
         pressed && cell.state === "hidden" && styles.cellPressed,
       ]}
     >
-      {getCellContent()}
+      <Animated.View
+        style={[
+          styles.innerContent,
+          { transform: [{ scale: scaleAnim }] },
+        ]}
+      >
+        {getCellContent()}
+      </Animated.View>
     </Pressable>
   );
 }
@@ -72,7 +109,6 @@ const styles = StyleSheet.create({
   cellBase: {
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
   },
   cellHidden: {
     backgroundColor: "#C0C0C0",
@@ -103,6 +139,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#FF0000",
     borderColor: "#808080",
     borderWidth: 1,
+  },
+  innerContent: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   number: {
     fontWeight: "bold",

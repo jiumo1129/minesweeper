@@ -39,6 +39,7 @@ export default function GameScreen() {
     elapsedTime,
     isFlagMode,
     handleCellPress,
+    handleCellLongPress,
     resetGame,
     toggleFlagMode,
   } = useMinesweeper();
@@ -49,8 +50,8 @@ export default function GameScreen() {
   const cellSize = useMemo(() => {
     const horizontalPadding = 16;
     const maxCellByWidth = Math.floor((width - horizontalPadding) / config.cols);
-    // Reserve space for header (~90px) + difficulty bar (~44px) + footer (~56px) + safe padding
-    const reservedHeight = 200;
+    // Reserve space for header (~90px) + difficulty bar (~44px) + footer (~60px) + hint (~22px) + safe padding
+    const reservedHeight = 220;
     const maxCellByHeight = Math.floor((height - reservedHeight) / config.rows);
     const size = Math.min(maxCellByWidth, maxCellByHeight, 36);
     return Math.max(size, 18);
@@ -64,6 +65,15 @@ export default function GameScreen() {
       handleCellPress(row, col);
     },
     [handleCellPress]
+  );
+
+  // Long press: toggle flag directly, regardless of current mode
+  const onCellLongPress = useCallback(
+    (row: number, col: number) => {
+      // Haptic is handled inside MineCell for better timing
+      handleCellLongPress(row, col);
+    },
+    [handleCellLongPress]
   );
 
   const onReset = useCallback(() => {
@@ -152,10 +162,11 @@ export default function GameScreen() {
             cellSize={cellSize}
             gameStatus={gameStatus}
             onCellPress={onCellPress}
+            onCellLongPress={onCellLongPress}
           />
         </View>
 
-        {/* Footer: Flag Mode Toggle */}
+        {/* Footer: Flag Mode Toggle + Long Press Hint */}
         <View style={styles.footer}>
           <Pressable
             onPress={onToggleFlagMode}
@@ -165,7 +176,7 @@ export default function GameScreen() {
               pressed && styles.modeButtonPressed,
             ]}
           >
-            <Text style={[styles.modeEmoji]}>⛏️</Text>
+            <Text style={styles.modeEmoji}>⛏️</Text>
             <Text style={[styles.modeLabel, !isFlagMode && styles.modeLabelActive]}>
               挖掘
             </Text>
@@ -179,12 +190,15 @@ export default function GameScreen() {
               pressed && styles.modeButtonPressed,
             ]}
           >
-            <Text style={[styles.modeEmoji]}>🚩</Text>
+            <Text style={styles.modeEmoji}>🚩</Text>
             <Text style={[styles.modeLabel, isFlagMode && styles.modeLabelActive]}>
               插旗
             </Text>
           </Pressable>
         </View>
+
+        {/* Long press hint */}
+        <Text style={styles.hint}>长按格子可快速插旗 / 取消旗帜</Text>
 
         {/* Game Result Overlay */}
         {(gameStatus === "won" || gameStatus === "lost") && (
@@ -199,6 +213,7 @@ export default function GameScreen() {
               {gameStatus === "won" && (
                 <Text style={styles.resultSub}>用时 {elapsedTime} 秒</Text>
               )}
+              <Text style={styles.resultRestart}>点击 🙂 重新开始</Text>
             </View>
           </View>
         )}
@@ -324,7 +339,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 16,
     paddingTop: 6,
-    paddingBottom: 4,
+    paddingBottom: 2,
   },
   modeButton: {
     flexDirection: "row",
@@ -364,6 +379,14 @@ const styles = StyleSheet.create({
     color: "#000000",
   },
 
+  // Long press hint
+  hint: {
+    textAlign: "center",
+    fontSize: 11,
+    color: "#666666",
+    paddingBottom: 2,
+  },
+
   // Result Overlay
   resultOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -395,5 +418,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#555555",
     marginTop: 2,
+  },
+  resultRestart: {
+    fontSize: 12,
+    color: "#777777",
+    marginTop: 4,
   },
 });

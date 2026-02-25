@@ -8,9 +8,16 @@ interface MineBoardProps {
   cellSize: number;
   gameStatus: GameStatus;
   onCellPress: (row: number, col: number) => void;
+  onCellLongPress: (row: number, col: number) => void;
 }
 
-function MineBoardComponent({ board, cellSize, gameStatus, onCellPress }: MineBoardProps) {
+function MineBoardComponent({
+  board,
+  cellSize,
+  gameStatus,
+  onCellPress,
+  onCellLongPress,
+}: MineBoardProps) {
   const gameOver = gameStatus === "won" || gameStatus === "lost";
 
   const renderRow = useCallback(
@@ -23,11 +30,12 @@ function MineBoardComponent({ board, cellSize, gameStatus, onCellPress }: MineBo
             size={cellSize}
             gameOver={gameOver}
             onPress={() => onCellPress(rowIndex, colIndex)}
+            onLongPress={() => onCellLongPress(rowIndex, colIndex)}
           />
         ))}
       </View>
     ),
-    [cellSize, gameOver, onCellPress]
+    [cellSize, gameOver, onCellPress, onCellLongPress]
   );
 
   return (

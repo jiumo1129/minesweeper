@@ -177,6 +177,26 @@ export function useMinesweeper() {
     isFirstClick.current = true;
   }, [difficulty]);
 
+  const handleCellLongPress = useCallback((row: number, col: number) => {
+    // Long press always toggles flag, regardless of current mode
+    if (gameStatus === "won" || gameStatus === "lost") return;
+
+    setBoard(prevBoard => {
+      const cell = prevBoard[row][col];
+      if (cell.state === "revealed") return prevBoard;
+
+      const newBoard = prevBoard.map(r => r.map(c => ({ ...c })));
+      if (cell.state === "hidden") {
+        newBoard[row][col].state = "flagged";
+        setFlagCount(f => f + 1);
+      } else if (cell.state === "flagged") {
+        newBoard[row][col].state = "hidden";
+        setFlagCount(f => f - 1);
+      }
+      return newBoard;
+    });
+  }, [gameStatus]);
+
   const handleCellPress = useCallback((row: number, col: number) => {
     if (gameStatus === "won" || gameStatus === "lost") return;
 
@@ -244,6 +264,7 @@ export function useMinesweeper() {
     elapsedTime,
     isFlagMode,
     handleCellPress,
+    handleCellLongPress,
     resetGame,
     toggleFlagMode,
   };
