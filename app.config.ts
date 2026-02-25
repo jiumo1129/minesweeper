@@ -32,7 +32,7 @@ const env = {
   appSlug: "minesweeper",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "",
+  logoUrl: "https://private-us-east-1.manuscdn.com/sessionFile/gIIXMhYcTyZMJ5n3s8skyM/sandbox/mZ5FqPwLS8S6vCbXgdV4Aj-img-1_1772013896000_na1fn_bWluZXN3ZWVwZXItaWNvbg.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
