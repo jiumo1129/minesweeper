@@ -1,6 +1,4 @@
-import React, { useCallback, useMemo, useState, useRef } from "react";
-import { MusicPlayer, type MusicPlayerHandle } from "@/components/music-player";
-import { MiniPlayerBar } from "@/components/mini-player-bar";
+import React, { useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -13,7 +11,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { MineBoard } from "@/components/mine-board";
 import { useMinesweeper, DIFFICULTY_CONFIGS, type Difficulty } from "@/hooks/use-minesweeper";
 import * as Haptics from "expo-haptics";
-import type { Song } from "@/constants/playlist";
+import { useMusicContext } from "@/lib/music-context";
 
 const DIFFICULTIES: Difficulty[] = ["beginner", "intermediate", "expert"];
 
@@ -32,8 +30,6 @@ function getFaceEmoji(status: string): string {
   return "🙂";
 }
 
-const MINI_BAR_HEIGHT = 54;
-
 export default function GameScreen() {
   const {
     board,
@@ -51,20 +47,14 @@ export default function GameScreen() {
 
   const { width, height } = useWindowDimensions();
 
-  // Music state
-  const [musicVisible, setMusicVisible] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentSong, setCurrentSong] = useState<Song | null>(null);
-  const [hasEverPlayed, setHasEverPlayed] = useState(false);
-  const musicPlayerRef = useRef<MusicPlayerHandle>(null);
+  // Music context — controls the global floating music player
+  const { showMiniBar, openMusic } = useMusicContext();
 
-  // Show mini bar when player has been opened before AND music sheet is closed
-  const showMiniBar = hasEverPlayed && !musicVisible;
+  const MINI_BAR_HEIGHT = 54;
 
   const cellSize = useMemo(() => {
     const horizontalPadding = 16;
     const maxCellByWidth = Math.floor((width - horizontalPadding) / config.cols);
-    // Reserve: header(~90) + difficulty(~44) + footer(~52) + hint(~22) + minibar + paddings
     const reservedHeight = 220 + (showMiniBar ? MINI_BAR_HEIGHT : 0);
     const maxCellByHeight = Math.floor((height - reservedHeight) / config.rows);
     const size = Math.min(maxCellByWidth, maxCellByHeight, 36);
@@ -116,174 +106,142 @@ export default function GameScreen() {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    setMusicVisible(true);
-  }, []);
-
-  const onCloseMusic = useCallback(() => {
-    setMusicVisible(false);
-  }, []);
-
-  const onPlayStateChange = useCallback((playing: boolean, song: Song | null) => {
-    setIsPlaying(playing);
-    setCurrentSong(song);
-    if (playing) setHasEverPlayed(true);
-  }, []);
-
-  const onMiniTogglePlay = useCallback(() => {
-    musicPlayerRef.current?.togglePlay();
-  }, []);
+    openMusic();
+  }, [openMusic]);
 
   return (
-    <>
-      <ScreenContainer
-        containerClassName="bg-[#C0C0C0]"
-        safeAreaClassName="bg-[#C0C0C0]"
-        edges={["top", "left", "right", "bottom"]}
-      >
-        {/* Main game layout */}
-        <View style={styles.container}>
-          {/* Header: Status Panel */}
-          <View style={styles.statusPanel}>
-            <View style={styles.ledDisplay}>
-              <Text style={styles.ledText}>{formatMines(remainingMines)}</Text>
-            </View>
-
-            <Pressable
-              onPress={onReset}
-              style={({ pressed }) => [
-                styles.faceButton,
-                pressed && styles.faceButtonPressed,
-              ]}
-            >
-              <Text style={styles.faceEmoji}>{getFaceEmoji(gameStatus)}</Text>
-            </Pressable>
-
-            <View style={styles.ledDisplay}>
-              <Text style={styles.ledText}>{formatTime(elapsedTime)}</Text>
-            </View>
+    <ScreenContainer
+      containerClassName="bg-[#C0C0C0]"
+      safeAreaClassName="bg-[#C0C0C0]"
+      edges={["top", "left", "right", "bottom"]}
+    >
+      <View style={styles.container}>
+        {/* Header: Status Panel */}
+        <View style={styles.statusPanel}>
+          <View style={styles.ledDisplay}>
+            <Text style={styles.ledText}>{formatMines(remainingMines)}</Text>
           </View>
 
-          {/* Difficulty Selector */}
-          <View style={styles.difficultyBar}>
-            {DIFFICULTIES.map((d) => (
-              <Pressable
-                key={d}
-                onPress={() => onDifficultyChange(d)}
-                style={({ pressed }) => [
-                  styles.difficultyBtn,
-                  difficulty === d && styles.difficultyBtnActive,
-                  pressed && styles.difficultyBtnPressed,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.difficultyText,
-                    difficulty === d && styles.difficultyTextActive,
-                  ]}
-                >
-                  {DIFFICULTY_CONFIGS[d].label}
-                </Text>
-              </Pressable>
-            ))}
+          <Pressable
+            onPress={onReset}
+            style={({ pressed }) => [
+              styles.faceButton,
+              pressed && styles.faceButtonPressed,
+            ]}
+          >
+            <Text style={styles.faceEmoji}>{getFaceEmoji(gameStatus)}</Text>
+          </Pressable>
+
+          <View style={styles.ledDisplay}>
+            <Text style={styles.ledText}>{formatTime(elapsedTime)}</Text>
           </View>
-
-          {/* Game Board */}
-          <View style={styles.boardWrapper}>
-            <MineBoard
-              board={board}
-              cellSize={cellSize}
-              gameStatus={gameStatus}
-              onCellPress={onCellPress}
-              onCellLongPress={onCellLongPress}
-            />
-          </View>
-
-          {/* Footer: Flag Mode Toggle */}
-          <View style={[styles.footer, showMiniBar && styles.footerWithMiniBar]}>
-            <Pressable
-              onPress={onToggleFlagMode}
-              style={({ pressed }) => [
-                styles.modeButton,
-                !isFlagMode && styles.modeButtonActive,
-                pressed && styles.modeButtonPressed,
-              ]}
-            >
-              <Text style={styles.modeEmoji}>⛏️</Text>
-              <Text style={[styles.modeLabel, !isFlagMode && styles.modeLabelActive]}>
-                挖掘
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={onToggleFlagMode}
-              style={({ pressed }) => [
-                styles.modeButton,
-                isFlagMode && styles.modeButtonActive,
-                pressed && styles.modeButtonPressed,
-              ]}
-            >
-              <Text style={styles.modeEmoji}>🚩</Text>
-              <Text style={[styles.modeLabel, isFlagMode && styles.modeLabelActive]}>
-                插旗
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* Long press hint */}
-          <Text style={styles.hint}>长按格子可快速插旗 / 取消旗帜</Text>
-
-          {/* Floating Music Button — only show when mini bar is hidden */}
-          {!showMiniBar && (
-            <Pressable
-              onPress={onOpenMusic}
-              style={({ pressed }) => [
-                styles.musicFab,
-                pressed && styles.musicFabPressed,
-              ]}
-            >
-              <Text style={styles.musicFabIcon}>🎵</Text>
-            </Pressable>
-          )}
-
-          {/* Game Result Overlay */}
-          {(gameStatus === "won" || gameStatus === "lost") && (
-            <View style={styles.resultOverlay} pointerEvents="none">
-              <View style={styles.resultBox}>
-                <Text style={styles.resultEmoji}>
-                  {gameStatus === "won" ? "🎉" : "💥"}
-                </Text>
-                <Text style={styles.resultText}>
-                  {gameStatus === "won" ? "胜利！" : "踩雷了！"}
-                </Text>
-                {gameStatus === "won" && (
-                  <Text style={styles.resultSub}>用时 {elapsedTime} 秒</Text>
-                )}
-                <Text style={styles.resultRestart}>点击 🙂 重新开始</Text>
-              </View>
-            </View>
-          )}
         </View>
 
-        {/* Mini Player Bar — inside ScreenContainer so absolute positioning works correctly */}
-        <MiniPlayerBar
-          visible={showMiniBar}
-          isPlaying={isPlaying}
-          currentSong={currentSong}
-          onTogglePlay={onMiniTogglePlay}
-          onOpenPlayer={onOpenMusic}
-        />
-      </ScreenContainer>
+        {/* Difficulty Selector */}
+        <View style={styles.difficultyBar}>
+          {DIFFICULTIES.map((d) => (
+            <Pressable
+              key={d}
+              onPress={() => onDifficultyChange(d)}
+              style={({ pressed }) => [
+                styles.difficultyBtn,
+                difficulty === d && styles.difficultyBtnActive,
+                pressed && styles.difficultyBtnPressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.difficultyText,
+                  difficulty === d && styles.difficultyTextActive,
+                ]}
+              >
+                {DIFFICULTY_CONFIGS[d].label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
 
-      {/* Music Player — always mounted after first open, WebView persists for continuous playback */}
-      <MusicPlayer
-        ref={musicPlayerRef}
-        visible={musicVisible}
-        onClose={onCloseMusic}
-        onPlayStateChange={onPlayStateChange}
-      />
-    </>
+        {/* Game Board */}
+        <View style={styles.boardWrapper}>
+          <MineBoard
+            board={board}
+            cellSize={cellSize}
+            gameStatus={gameStatus}
+            onCellPress={onCellPress}
+            onCellLongPress={onCellLongPress}
+          />
+        </View>
+
+        {/* Footer: Flag Mode Toggle */}
+        <View style={[styles.footer, showMiniBar && styles.footerWithMiniBar]}>
+          <Pressable
+            onPress={onToggleFlagMode}
+            style={({ pressed }) => [
+              styles.modeButton,
+              !isFlagMode && styles.modeButtonActive,
+              pressed && styles.modeButtonPressed,
+            ]}
+          >
+            <Text style={styles.modeEmoji}>⛏️</Text>
+            <Text style={[styles.modeLabel, !isFlagMode && styles.modeLabelActive]}>
+              挖掘
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={onToggleFlagMode}
+            style={({ pressed }) => [
+              styles.modeButton,
+              isFlagMode && styles.modeButtonActive,
+              pressed && styles.modeButtonPressed,
+            ]}
+          >
+            <Text style={styles.modeEmoji}>🚩</Text>
+            <Text style={[styles.modeLabel, isFlagMode && styles.modeLabelActive]}>
+              插旗
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Long press hint */}
+        <Text style={styles.hint}>长按格子可快速插旗 / 取消旗帜</Text>
+
+        {/* Floating Music Button — only show when mini bar is hidden */}
+        {!showMiniBar && (
+          <Pressable
+            onPress={onOpenMusic}
+            style={({ pressed }) => [
+              styles.musicFab,
+              pressed && styles.musicFabPressed,
+            ]}
+          >
+            <Text style={styles.musicFabIcon}>🎵</Text>
+          </Pressable>
+        )}
+
+        {/* Game Result Overlay */}
+        {(gameStatus === "won" || gameStatus === "lost") && (
+          <View style={styles.resultOverlay} pointerEvents="none">
+            <View style={styles.resultBox}>
+              <Text style={styles.resultEmoji}>
+                {gameStatus === "won" ? "🎉" : "💥"}
+              </Text>
+              <Text style={styles.resultText}>
+                {gameStatus === "won" ? "胜利！" : "踩雷了！"}
+              </Text>
+              {gameStatus === "won" && (
+                <Text style={styles.resultSub}>用时 {elapsedTime} 秒</Text>
+              )}
+              <Text style={styles.resultRestart}>点击 🙂 重新开始</Text>
+            </View>
+          </View>
+        )}
+      </View>
+    </ScreenContainer>
   );
 }
+
+const MINI_BAR_HEIGHT = 54;
 
 const styles = StyleSheet.create({
   container: {
@@ -294,7 +252,6 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
 
-  // Status Panel
   statusPanel: {
     flexDirection: "row",
     alignItems: "center",
@@ -310,7 +267,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 
-  // LED Display
   ledDisplay: {
     backgroundColor: "#000",
     paddingHorizontal: 6,
@@ -331,7 +287,6 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
 
-  // Face Button
   faceButton: {
     width: 36,
     height: 36,
@@ -354,7 +309,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
 
-  // Difficulty Bar
   difficultyBar: {
     flexDirection: "row",
     gap: 4,
@@ -393,7 +347,6 @@ const styles = StyleSheet.create({
     color: "#000080",
   },
 
-  // Board
   boardWrapper: {
     flex: 1,
     alignItems: "center",
@@ -407,7 +360,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 
-  // Footer
   footer: {
     flexDirection: "row",
     gap: 6,
@@ -456,7 +408,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  // Hint
   hint: {
     textAlign: "center",
     fontSize: 10,
@@ -464,7 +415,6 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
 
-  // Floating Music Button
   musicFab: {
     position: "absolute",
     bottom: 36,
@@ -489,7 +439,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
 
-  // Result Overlay
   resultOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.45)",

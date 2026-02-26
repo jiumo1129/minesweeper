@@ -34,4 +34,6 @@
 - [x] 点击迷你播放条重新打开歌单界面
 - [x] 迷你播放条在歌单关闭后自动显示
 - [x] 修复迷你播放条不显示问题（将MiniPlayerBar移入ScreenContainer内部，absolute定位正确）
-- [x] 修复棋盘与底部按钮之间的大块空白布局
+- [x] 修复棋盘与底部按钮之间的大块空白布局- [x] 创建 MusicContext全局状态管理音乐播放器
+- [x] 将MusicPlayer和MiniPlayerBar移至根布局层（app/_layout.tsx）
+- [x] 从index.tsx中移除音乐播放器相关代码，改用MusicContext
