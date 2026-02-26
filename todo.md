@@ -37,3 +37,6 @@
 - [x] 修复棋盘与底部按钮之间的大块空白布局- [x] 创建 MusicContext全局状态管理音乐播放器
 - [x] 将MusicPlayer和MiniPlayerBar移至根布局层（app/_layout.tsx）
 - [x] 从index.tsx中移除音乐播放器相关代码，改用MusicContext
+- [x] 悬浮音乐按钮支持拖动（PanResponder手势）
+- [x] 拖动松手后自动吸附到左右边缘（Spring弹性动画）
+- [x] 拖动期间区分点击与拖动（位移小于6px视为点击）

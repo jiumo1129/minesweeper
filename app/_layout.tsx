@@ -21,6 +21,7 @@ import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-run
 import { MusicProvider, useMusicContext } from "@/lib/music-context";
 import { MusicPlayer } from "@/components/music-player";
 import { MiniPlayerBar } from "@/components/mini-player-bar";
+import { DraggableFab } from "@/components/draggable-fab";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -45,6 +46,11 @@ function GlobalMusicOverlay() {
 
   return (
     <>
+      {/* Draggable floating music button — only shown when mini bar is hidden */}
+      {!showMiniBar && !musicVisible && (
+        <DraggableFab onPress={openMusic} icon="🎵" />
+      )}
+
       {/* Mini Player Bar — absolute positioned at root, always above all content */}
       <MiniPlayerBar
         visible={showMiniBar}

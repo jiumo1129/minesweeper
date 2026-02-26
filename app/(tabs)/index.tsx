@@ -102,12 +102,6 @@ export default function GameScreen() {
     toggleFlagMode();
   }, [toggleFlagMode]);
 
-  const onOpenMusic = useCallback(() => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    openMusic();
-  }, [openMusic]);
 
   return (
     <ScreenContainer
@@ -206,18 +200,6 @@ export default function GameScreen() {
         {/* Long press hint */}
         <Text style={styles.hint}>长按格子可快速插旗 / 取消旗帜</Text>
 
-        {/* Floating Music Button — only show when mini bar is hidden */}
-        {!showMiniBar && (
-          <Pressable
-            onPress={onOpenMusic}
-            style={({ pressed }) => [
-              styles.musicFab,
-              pressed && styles.musicFabPressed,
-            ]}
-          >
-            <Text style={styles.musicFabIcon}>🎵</Text>
-          </Pressable>
-        )}
 
         {/* Game Result Overlay */}
         {(gameStatus === "won" || gameStatus === "lost") && (
@@ -415,29 +397,6 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
 
-  musicFab: {
-    position: "absolute",
-    bottom: 36,
-    right: 10,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#E60026",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  musicFabPressed: {
-    backgroundColor: "#c00020",
-    transform: [{ scale: 0.95 }],
-  },
-  musicFabIcon: {
-    fontSize: 20,
-  },
 
   resultOverlay: {
     ...StyleSheet.absoluteFillObject,
