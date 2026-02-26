@@ -29,6 +29,7 @@ import {
   PLAYLIST_SONG_COUNT,
   type Song,
 } from "@/constants/playlist";
+import { resolveCurrentSong, type WebViewPlayStateMessage } from "@/lib/music-player-state";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -48,9 +49,18 @@ function buildPlayerUrl(songId?: number): string {
 // JS injected into WebView to monitor play/pause state
 const INJECTED_JS = `
 (function() {
-  function postState(playing) {
+  function getSongIdFromAudio(audio) {
+    if (!audio || !audio.currentSrc) return null;
+    var match = audio.currentSrc.match(/[?&]id=(\d+)/);
+    if (!match) return null;
+    var id = parseInt(match[1], 10);
+    return Number.isNaN(id) ? null : id;
+  }
+
+  function postState(playing, audio) {
+    var songId = getSongIdFromAudio(audio);
     window.ReactNativeWebView && window.ReactNativeWebView.postMessage(
-      JSON.stringify({ type: 'playState', playing: playing })
+      JSON.stringify({ type: 'playState', playing: playing, songId: songId || undefined })
     );
   }
 
@@ -63,12 +73,12 @@ const INJECTED_JS = `
       if (audio._rn_patched) return;
       audio._rn_patched = true;
 
-      audio.addEventListener('play', function() { postState(true); });
-      audio.addEventListener('pause', function() { postState(false); });
-      audio.addEventListener('ended', function() { postState(false); });
+      audio.addEventListener('play', function() { postState(true, audio); });
+      audio.addEventListener('pause', function() { postState(false, audio); });
+      audio.addEventListener('ended', function() { postState(false, audio); });
 
       // Report initial state
-      postState(!audio.paused);
+      postState(!audio.paused, audio);
     });
   }, 500);
 
@@ -78,9 +88,9 @@ const INJECTED_JS = `
     audios.forEach(function(audio) {
       if (audio._rn_patched) return;
       audio._rn_patched = true;
-      audio.addEventListener('play', function() { postState(true); });
-      audio.addEventListener('pause', function() { postState(false); });
-      audio.addEventListener('ended', function() { postState(false); });
+      audio.addEventListener('play', function() { postState(true, audio); });
+      audio.addEventListener('pause', function() { postState(false, audio); });
+      audio.addEventListener('ended', function() { postState(false, audio); });
     });
   });
   observer.observe(document.body, { childList: true, subtree: true });
@@ -248,10 +258,11 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
     const handleWebViewMessage = useCallback(
       (event: WebViewMessageEvent) => {
         try {
-          const data = JSON.parse(event.nativeEvent.data);
+          const data = JSON.parse(event.nativeEvent.data) as WebViewPlayStateMessage;
           if (data.type === "playState") {
+            const currentSong = resolveCurrentSong(data, selectedSong);
             setIsPlaying(data.playing);
-            onPlayStateChange?.(data.playing, selectedSong);
+            onPlayStateChange?.(data.playing, currentSong);
           }
         } catch {
           // ignore parse errors
