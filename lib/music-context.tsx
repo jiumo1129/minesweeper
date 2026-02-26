@@ -20,6 +20,8 @@ interface MusicContextValue {
   closeMusic: () => void;
   onPlayStateChange: (playing: boolean, song: Song | null) => void;
   togglePlay: () => void;
+  playNext: () => void;
+  playPrev: () => void;
 }
 
 const MusicContext = createContext<MusicContextValue | null>(null);
@@ -55,6 +57,14 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     musicPlayerRef.current?.togglePlay();
   }, []);
 
+  const playNext = useCallback(() => {
+    musicPlayerRef.current?.playNext();
+  }, []);
+
+  const playPrev = useCallback(() => {
+    musicPlayerRef.current?.playPrev();
+  }, []);
+
   return (
     <MusicContext.Provider
       value={{
@@ -68,6 +78,8 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         closeMusic,
         onPlayStateChange,
         togglePlay,
+        playNext,
+        playPrev,
       }}
     >
       {children}

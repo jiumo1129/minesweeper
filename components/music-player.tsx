@@ -110,6 +110,8 @@ export interface MusicPlayerHandle {
   play: () => void;
   pause: () => void;
   togglePlay: () => void;
+  playNext: () => void;
+  playPrev: () => void;
 }
 
 interface MusicPlayerProps {
@@ -123,24 +125,85 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
     const insets = useSafeAreaInsets();
     const webViewRef = useRef<WebView>(null);
     const [loading, setLoading] = useState(true);
-    const [selectedSong, setSelectedSong] = useState<Song | null>(null);
+    // -1 means "play all" (playlist mode), >= 0 means specific song index in SONGS
+    const [currentIndex, setCurrentIndex] = useState<number>(-1);
     const [searchQuery, setSearchQuery] = useState("");
     const [isPlaying, setIsPlaying] = useState(false);
+    const autoNextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Expose play/pause control to parent via ref
+    const selectedSong = currentIndex >= 0 ? SONGS[currentIndex] ?? null : null;
+
+    // Clear auto-next timer
+    const clearAutoNextTimer = useCallback(() => {
+      if (autoNextTimerRef.current) {
+        clearTimeout(autoNextTimerRef.current);
+        autoNextTimerRef.current = null;
+      }
+    }, []);
+
+    // Schedule auto-next after song duration + 3s buffer
+    const scheduleAutoNext = useCallback(
+      (song: Song | null) => {
+        clearAutoNextTimer();
+        if (!song) return; // playlist mode: netease handles auto-next internally
+        const delayMs = (song.duration + 3) * 1000;
+        autoNextTimerRef.current = setTimeout(() => {
+          setCurrentIndex((prev) => {
+            const nextIdx = prev < 0 ? 0 : (prev + 1) % SONGS.length;
+            const nextSong = SONGS[nextIdx];
+            onPlayStateChange?.(true, nextSong ?? null);
+            return nextIdx;
+          });
+          setLoading(true);
+          setIsPlaying(true);
+        }, delayMs);
+      },
+      [clearAutoNextTimer, onPlayStateChange]
+    );
+
+    // Cleanup timer on unmount
+    useEffect(() => {
+      return () => clearAutoNextTimer();
+    }, [clearAutoNextTimer]);
+
+    // Expose play/pause/next/prev control to parent via ref
     useImperativeHandle(ref, () => ({
       play: () => {
         webViewRef.current?.injectJavaScript(JS_PLAY);
       },
       pause: () => {
         webViewRef.current?.injectJavaScript(JS_PAUSE);
+        clearAutoNextTimer();
       },
       togglePlay: () => {
         if (isPlaying) {
           webViewRef.current?.injectJavaScript(JS_PAUSE);
+          clearAutoNextTimer();
         } else {
           webViewRef.current?.injectJavaScript(JS_PLAY);
         }
+      },
+      playNext: () => {
+        clearAutoNextTimer();
+        setCurrentIndex((prev) => {
+          const nextIdx = prev < 0 ? 0 : (prev + 1) % SONGS.length;
+          const nextSong = SONGS[nextIdx];
+          onPlayStateChange?.(true, nextSong ?? null);
+          return nextIdx;
+        });
+        setLoading(true);
+        setIsPlaying(true);
+      },
+      playPrev: () => {
+        clearAutoNextTimer();
+        setCurrentIndex((prev) => {
+          const prevIdx = prev <= 0 ? SONGS.length - 1 : prev - 1;
+          const prevSong = SONGS[prevIdx];
+          onPlayStateChange?.(true, prevSong ?? null);
+          return prevIdx;
+        });
+        setLoading(true);
+        setIsPlaying(true);
       },
     }));
 
@@ -209,26 +272,28 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         if (Platform.OS !== "web") {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }
-        setSelectedSong(song);
+        const idx = SONGS.findIndex((s) => s.id === song.id);
+        setCurrentIndex(idx >= 0 ? idx : 0);
         setLoading(true);
-        // Optimistically mark as playing when user selects a song
-        // (WebView audio events are unreliable due to cross-origin iframe)
         setIsPlaying(true);
         onPlayStateChange?.(true, song);
+        scheduleAutoNext(song);
       },
-      [onPlayStateChange]
+      [onPlayStateChange, scheduleAutoNext]
     );
 
     const handlePlayAll = useCallback(() => {
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
-      setSelectedSong(null);
+      // playlist mode: index -1, netease handles sequence internally
+      setCurrentIndex(-1);
       setLoading(true);
-      // Optimistically mark as playing when user taps Play All
       setIsPlaying(true);
       onPlayStateChange?.(true, null);
-    }, [onPlayStateChange]);
+      // No auto-next timer for playlist mode
+      clearAutoNextTimer();
+    }, [onPlayStateChange, clearAutoNextTimer]);
 
     const playerUrl = useMemo(
       () => buildPlayerUrl(selectedSong?.id),
@@ -248,7 +313,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
 
     const renderSongItem = useCallback(
       ({ item, index }: { item: Song; index: number }) => {
-        const isSelected = selectedSong?.id === item.id;
+        const isSelected = currentIndex >= 0 && SONGS[currentIndex]?.id === item.id;
         return (
           <Pressable
             onPress={() => handleSelectSong(item)}
@@ -277,7 +342,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
           </Pressable>
         );
       },
-      [selectedSong, handleSelectSong]
+      [currentIndex, handleSelectSong]
     );
 
     const keyExtractor = useCallback((item: Song) => String(item.id), []);

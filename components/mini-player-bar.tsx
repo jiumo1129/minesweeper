@@ -16,6 +16,8 @@ interface MiniPlayerBarProps {
   currentSong: Song | null;
   onTogglePlay: () => void;
   onOpenPlayer: () => void;
+  onPlayNext?: () => void;
+  onPlayPrev?: () => void;
 }
 
 export function MiniPlayerBar({
@@ -24,33 +26,27 @@ export function MiniPlayerBar({
   currentSong,
   onTogglePlay,
   onOpenPlayer,
+  onPlayNext,
+  onPlayPrev,
 }: MiniPlayerBarProps) {
-  const slideAnim = useRef(new Animated.Value(60)).current;
+  const slideAnim = useRef(new Animated.Value(70)).current;
 
   useEffect(() => {
     Animated.timing(slideAnim, {
-      toValue: visible ? 0 : 60,
+      toValue: visible ? 0 : 70,
       duration: 280,
       useNativeDriver: true,
     }).start();
   }, [visible, slideAnim]);
 
-  const handleTogglePlay = () => {
+  const haptic = () => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    onTogglePlay();
-  };
-
-  const handleOpen = () => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    onOpenPlayer();
   };
 
   const songTitle = currentSong?.title ?? "等墨久喜欢的音乐";
-  const songArtist = currentSong?.artist ?? "播放全部";
+  const songArtist = currentSong?.artist ?? "点击选歌";
 
   return (
     <Animated.View
@@ -60,56 +56,58 @@ export function MiniPlayerBar({
       ]}
       pointerEvents={visible ? "auto" : "none"}
     >
-      {/* Progress indicator line */}
+      {/* Top progress indicator line */}
       <View style={styles.progressLine}>
-        <Animated.View
-          style={[
-            styles.progressFill,
-            isPlaying && styles.progressFillPlaying,
-          ]}
-        />
+        <View style={[styles.progressFill, isPlaying && styles.progressFillPlaying]} />
       </View>
 
-      {/* Main content: tap to open player */}
-      <Pressable
-        onPress={handleOpen}
-        style={({ pressed }) => [
-          styles.content,
-          pressed && styles.contentPressed,
-        ]}
-      >
-        {/* Music note icon */}
-        <View style={[styles.iconBox, isPlaying && styles.iconBoxPlaying]}>
-          <Text style={styles.iconText}>🎵</Text>
-        </View>
-
-        {/* Song info */}
-        <View style={styles.songInfo}>
-          <Text style={styles.songTitle} numberOfLines={1}>
-            {songTitle}
-          </Text>
-          <Text style={styles.songArtist} numberOfLines={1}>
-            {isPlaying ? `▶ ${songArtist}` : songArtist}
-          </Text>
-        </View>
-
-        {/* Play/Pause button */}
+      <View style={styles.row}>
+        {/* Tap left area to open full player */}
         <Pressable
-          onPress={handleTogglePlay}
-          style={({ pressed }) => [
-            styles.playBtn,
-            pressed && styles.playBtnPressed,
-          ]}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          onPress={() => { haptic(); onOpenPlayer(); }}
+          style={({ pressed }) => [styles.infoArea, pressed && styles.pressed]}
         >
-          <Text style={styles.playBtnText}>{isPlaying ? "⏸" : "▶"}</Text>
+          <View style={[styles.iconBox, isPlaying && styles.iconBoxPlaying]}>
+            <Text style={styles.iconText}>🎵</Text>
+          </View>
+          <View style={styles.songInfo}>
+            <Text style={styles.songTitle} numberOfLines={1}>{songTitle}</Text>
+            <Text style={styles.songArtist} numberOfLines={1}>
+              {isPlaying ? `▶ ${songArtist}` : songArtist}
+            </Text>
+          </View>
         </Pressable>
 
-        {/* Open arrow */}
-        <View style={styles.arrowBox}>
-          <Text style={styles.arrowText}>›</Text>
+        {/* Controls */}
+        <View style={styles.controls}>
+          {/* Prev */}
+          <Pressable
+            onPress={() => { haptic(); onPlayPrev?.(); }}
+            style={({ pressed }) => [styles.ctrlBtn, pressed && styles.ctrlBtnPressed]}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          >
+            <Text style={styles.ctrlIcon}>⏮</Text>
+          </Pressable>
+
+          {/* Play / Pause */}
+          <Pressable
+            onPress={() => { haptic(); onTogglePlay(); }}
+            style={({ pressed }) => [styles.playBtn, pressed && styles.playBtnPressed]}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          >
+            <Text style={styles.playBtnText}>{isPlaying ? "⏸" : "▶"}</Text>
+          </Pressable>
+
+          {/* Next */}
+          <Pressable
+            onPress={() => { haptic(); onPlayNext?.(); }}
+            style={({ pressed }) => [styles.ctrlBtn, pressed && styles.ctrlBtnPressed]}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          >
+            <Text style={styles.ctrlIcon}>⏭</Text>
+          </Pressable>
         </View>
-      </Pressable>
+      </View>
     </Animated.View>
   );
 }
@@ -140,18 +138,24 @@ const styles = StyleSheet.create({
     backgroundColor: "#E60026",
   },
   progressFillPlaying: {
-    width: "40%", // Static visual indicator; real progress requires deeper WebView integration
+    width: "40%",
   },
-  content: {
+  row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    gap: 10,
-    minHeight: 52,
+    gap: 8,
+    minHeight: 54,
   },
-  contentPressed: {
-    backgroundColor: "#22223a",
+  infoArea: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  pressed: {
+    opacity: 0.7,
   },
   iconBox: {
     width: 36,
@@ -180,6 +184,25 @@ const styles = StyleSheet.create({
     color: "#888",
     fontSize: 11,
   },
+  controls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  ctrlBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+  },
+  ctrlBtnPressed: {
+    backgroundColor: "#2a2a3a",
+  },
+  ctrlIcon: {
+    color: "#CCC",
+    fontSize: 16,
+  },
   playBtn: {
     width: 36,
     height: 36,
@@ -196,14 +219,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
     marginLeft: 2,
-  },
-  arrowBox: {
-    width: 20,
-    alignItems: "center",
-  },
-  arrowText: {
-    color: "#555",
-    fontSize: 20,
-    fontWeight: "300",
   },
 });

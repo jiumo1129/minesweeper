@@ -42,6 +42,8 @@ function GlobalMusicOverlay() {
     openMusic,
     onPlayStateChange,
     togglePlay,
+    playNext,
+    playPrev,
   } = useMusicContext();
 
   return (
@@ -58,6 +60,8 @@ function GlobalMusicOverlay() {
         currentSong={currentSong}
         onTogglePlay={togglePlay}
         onOpenPlayer={openMusic}
+        onPlayNext={playNext}
+        onPlayPrev={playPrev}
       />
 
       {/* Music Player Sheet — full-screen overlay at root level */}
