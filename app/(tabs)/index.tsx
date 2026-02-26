@@ -111,6 +111,7 @@ export default function GameScreen() {
   }, [toggleFlagMode]);
 
   return (
+    <>
     <ScreenContainer
       containerClassName="bg-[#C0C0C0]"
       safeAreaClassName="bg-[#C0C0C0]"
@@ -221,12 +222,6 @@ export default function GameScreen() {
           <Text style={styles.musicFabIcon}>🎵</Text>
         </Pressable>
 
-        {/* Music Player Modal */}
-        <MusicPlayer
-          visible={musicVisible}
-          onClose={() => setMusicVisible(false)}
-        />
-
         {/* Game Result Overlay */}
         {(gameStatus === "won" || gameStatus === "lost") && (
           <View style={styles.resultOverlay} pointerEvents="none">
@@ -246,6 +241,12 @@ export default function GameScreen() {
         )}
       </View>
     </ScreenContainer>
+
+    <MusicPlayer
+      visible={musicVisible}
+      onClose={() => setMusicVisible(false)}
+    />
+    </>
   );
 }
 
