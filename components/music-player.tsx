@@ -20,7 +20,7 @@ import {
   Animated,
   TouchableWithoutFeedback,
 } from "react-native";
-import { WebView, type WebViewMessageEvent } from "react-native-webview";
+import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import {
@@ -45,66 +45,8 @@ function buildPlayerUrl(songId?: number): string {
   return `https://music.163.com/outchain/player?type=0&id=2116638139&auto=0&height=66`;
 }
 
-// JS injected into WebView to monitor play/pause state
-const INJECTED_JS = `
-(function() {
-  function postState(playing) {
-    window.ReactNativeWebView && window.ReactNativeWebView.postMessage(
-      JSON.stringify({ type: 'playState', playing: playing })
-    );
-  }
-
-  // Poll for audio element every 500ms
-  var pollInterval = setInterval(function() {
-    var audios = document.querySelectorAll('audio');
-    if (audios.length === 0) return;
-
-    audios.forEach(function(audio) {
-      if (audio._rn_patched) return;
-      audio._rn_patched = true;
-
-      audio.addEventListener('play', function() { postState(true); });
-      audio.addEventListener('pause', function() { postState(false); });
-      audio.addEventListener('ended', function() { postState(false); });
-
-      // Report initial state
-      postState(!audio.paused);
-    });
-  }, 500);
-
-  // Also watch for dynamically added audio elements
-  var observer = new MutationObserver(function() {
-    var audios = document.querySelectorAll('audio');
-    audios.forEach(function(audio) {
-      if (audio._rn_patched) return;
-      audio._rn_patched = true;
-      audio.addEventListener('play', function() { postState(true); });
-      audio.addEventListener('pause', function() { postState(false); });
-      audio.addEventListener('ended', function() { postState(false); });
-    });
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  true;
-})();
-`;
-
-// Commands to inject for play/pause control
-const JS_PLAY = `
-(function() {
-  var audio = document.querySelector('audio');
-  if (audio) { audio.play(); }
-  true;
-})();
-`;
-
-const JS_PAUSE = `
-(function() {
-  var audio = document.querySelector('audio');
-  if (audio) { audio.pause(); }
-  true;
-})();
-`;
+// A blank page — loading this stops all audio
+const BLANK_URL = "about:blank";
 
 export interface MusicPlayerHandle {
   play: () => void;
@@ -123,21 +65,36 @@ interface MusicPlayerProps {
 export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
   function MusicPlayer({ visible, onClose, onPlayStateChange }, ref) {
     const insets = useSafeAreaInsets();
-    const webViewRef = useRef<WebView>(null);
     const [loading, setLoading] = useState(true);
     // -1 means "play all" (playlist mode), >= 0 means specific song index in SONGS
     const [currentIndex, setCurrentIndex] = useState<number>(-1);
     const [searchQuery, setSearchQuery] = useState("");
-    const [isPlaying, setIsPlaying] = useState(false);
-    const isPlayingRef = useRef(false); // ref to avoid stale closure in useImperativeHandle
+    // isPaused: true = user has paused; false = playing
+    const [isPaused, setIsPaused] = useState(false);
+    const isPausedRef = useRef(false); // always up-to-date, no stale closure
     const autoNextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // The URL actually loaded in WebView:
+    // - when playing: the real netease player URL
+    // - when paused: about:blank (stops audio immediately)
+    const [webViewUrl, setWebViewUrl] = useState<string>(
+      buildPlayerUrl(undefined)
+    );
+    // Store the "real" player URL separately so we can restore it on resume
+    const realUrlRef = useRef<string>(buildPlayerUrl(undefined));
 
     const selectedSong = currentIndex >= 0 ? SONGS[currentIndex] ?? null : null;
 
-    // Keep ref in sync with state to avoid stale closures
+    // Keep isPausedRef in sync
     useEffect(() => {
-      isPlayingRef.current = isPlaying;
-    }, [isPlaying]);
+      isPausedRef.current = isPaused;
+    }, [isPaused]);
+
+    // currentIndexRef: always up-to-date copy of currentIndex for use in callbacks
+    const currentIndexRef = useRef(currentIndex);
+    useEffect(() => {
+      currentIndexRef.current = currentIndex;
+    }, [currentIndex]);
 
     // Clear auto-next timer
     const clearAutoNextTimer = useCallback(() => {
@@ -151,17 +108,18 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
     const scheduleAutoNext = useCallback(
       (song: Song | null) => {
         clearAutoNextTimer();
-        if (!song) return; // playlist mode: netease handles auto-next internally
+        if (!song) return;
         const delayMs = (song.duration + 3) * 1000;
         autoNextTimerRef.current = setTimeout(() => {
-          setCurrentIndex((prev) => {
-            const nextIdx = prev < 0 ? 0 : (prev + 1) % SONGS.length;
-            const nextSong = SONGS[nextIdx];
-            onPlayStateChange?.(true, nextSong ?? null);
-            return nextIdx;
-          });
+          const nextIdx = currentIndexRef.current < 0 ? 0 : (currentIndexRef.current + 1) % SONGS.length;
+          const nextSong = SONGS[nextIdx];
+          const url = buildPlayerUrl(nextSong?.id);
+          realUrlRef.current = url;
+          setWebViewUrl(url);
           setLoading(true);
-          setIsPlaying(true);
+          setIsPaused(false);
+          setCurrentIndex(nextIdx);
+          setTimeout(() => onPlayStateChange?.(true, nextSong ?? null), 0);
         }, delayMs);
       },
       [clearAutoNextTimer, onPlayStateChange]
@@ -173,47 +131,78 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
     }, [clearAutoNextTimer]);
 
     // Expose play/pause/next/prev control to parent via ref
-    useImperativeHandle(ref, () => ({
-      play: () => {
-        webViewRef.current?.injectJavaScript(JS_PLAY);
-      },
-      pause: () => {
-        webViewRef.current?.injectJavaScript(JS_PAUSE);
-        clearAutoNextTimer();
-      },
-      togglePlay: () => {
-        if (isPlayingRef.current) {
-          webViewRef.current?.injectJavaScript(JS_PAUSE);
-          setIsPlaying(false);
+    useImperativeHandle(
+      ref,
+      () => ({
+        play: () => {
+          if (isPausedRef.current) {
+            setWebViewUrl(realUrlRef.current);
+            setLoading(true);
+            setIsPaused(false);
+            const song = currentIndexRef.current >= 0 ? SONGS[currentIndexRef.current] ?? null : null;
+            setTimeout(() => onPlayStateChange?.(true, song), 0);
+          }
+        },
+        pause: () => {
+          if (!isPausedRef.current) {
+            clearAutoNextTimer();
+            setWebViewUrl(BLANK_URL);
+            setIsPaused(true);
+            const song = currentIndexRef.current >= 0 ? SONGS[currentIndexRef.current] ?? null : null;
+            setTimeout(() => onPlayStateChange?.(false, song), 0);
+          }
+        },
+        togglePlay: () => {
+          if (isPausedRef.current) {
+            // Resume: reload the real URL
+            setWebViewUrl(realUrlRef.current);
+            setLoading(true);
+            setIsPaused(false);
+            const song = currentIndexRef.current >= 0 ? SONGS[currentIndexRef.current] ?? null : null;
+            setTimeout(() => onPlayStateChange?.(true, song), 0);
+          } else {
+            // Pause: load blank page to stop audio
+            clearAutoNextTimer();
+            setWebViewUrl(BLANK_URL);
+            setIsPaused(true);
+            const song = currentIndexRef.current >= 0 ? SONGS[currentIndexRef.current] ?? null : null;
+            setTimeout(() => onPlayStateChange?.(false, song), 0);
+          }
+        },
+        playNext: () => {
           clearAutoNextTimer();
-        } else {
-          webViewRef.current?.injectJavaScript(JS_PLAY);
-          setIsPlaying(true);
-        }
-      },
-      playNext: () => {
-        clearAutoNextTimer();
-        setCurrentIndex((prev) => {
-          const nextIdx = prev < 0 ? 0 : (prev + 1) % SONGS.length;
+          const nextIdx = currentIndexRef.current < 0 ? 0 : (currentIndexRef.current + 1) % SONGS.length;
           const nextSong = SONGS[nextIdx];
-          onPlayStateChange?.(true, nextSong ?? null);
-          return nextIdx;
-        });
-        setLoading(true);
-        setIsPlaying(true);
-      },
-      playPrev: () => {
-        clearAutoNextTimer();
-        setCurrentIndex((prev) => {
-          const prevIdx = prev <= 0 ? SONGS.length - 1 : prev - 1;
+          const url = buildPlayerUrl(nextSong?.id);
+          realUrlRef.current = url;
+          setWebViewUrl(url);
+          setLoading(true);
+          setIsPaused(false);
+          setCurrentIndex(nextIdx);
+          setTimeout(() => {
+            onPlayStateChange?.(true, nextSong ?? null);
+            scheduleAutoNext(nextSong ?? null);
+          }, 0);
+        },
+        playPrev: () => {
+          clearAutoNextTimer();
+          const prevIdx = currentIndexRef.current <= 0 ? SONGS.length - 1 : currentIndexRef.current - 1;
           const prevSong = SONGS[prevIdx];
-          onPlayStateChange?.(true, prevSong ?? null);
-          return prevIdx;
-        });
-        setLoading(true);
-        setIsPlaying(true);
-      },
-    }));
+          const url = buildPlayerUrl(prevSong?.id);
+          realUrlRef.current = url;
+          setWebViewUrl(url);
+          setLoading(true);
+          setIsPaused(false);
+          setCurrentIndex(prevIdx);
+          setTimeout(() => {
+            onPlayStateChange?.(true, prevSong ?? null);
+            scheduleAutoNext(prevSong ?? null);
+          }, 0);
+        },
+      }),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [clearAutoNextTimer, onPlayStateChange, scheduleAutoNext]
+    );
 
     // Animation for slide-up / slide-down
     const sheetHeight = Math.min(SCREEN_HEIGHT * 0.88, 700);
@@ -252,22 +241,6 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       }
     }, [visible, sheetHeight, slideAnim, backdropAnim]);
 
-    // Handle messages from WebView
-    const handleWebViewMessage = useCallback(
-      (event: WebViewMessageEvent) => {
-        try {
-          const data = JSON.parse(event.nativeEvent.data);
-          if (data.type === "playState") {
-            setIsPlaying(data.playing);
-            onPlayStateChange?.(data.playing, selectedSong);
-          }
-        } catch {
-          // ignore parse errors
-        }
-      },
-      [onPlayStateChange, selectedSong]
-    );
-
     const handleClose = useCallback(() => {
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -281,9 +254,12 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }
         const idx = SONGS.findIndex((s) => s.id === song.id);
+        const url = buildPlayerUrl(song.id);
+        realUrlRef.current = url;
+        setWebViewUrl(url);
         setCurrentIndex(idx >= 0 ? idx : 0);
         setLoading(true);
-        setIsPlaying(true);
+        setIsPaused(false);
         onPlayStateChange?.(true, song);
         scheduleAutoNext(song);
       },
@@ -294,19 +270,15 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       if (Platform.OS !== "web") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
-      // playlist mode: index -1, netease handles sequence internally
+      const url = buildPlayerUrl(undefined);
+      realUrlRef.current = url;
+      setWebViewUrl(url);
       setCurrentIndex(-1);
       setLoading(true);
-      setIsPlaying(true);
+      setIsPaused(false);
       onPlayStateChange?.(true, null);
-      // No auto-next timer for playlist mode
       clearAutoNextTimer();
     }, [onPlayStateChange, clearAutoNextTimer]);
-
-    const playerUrl = useMemo(
-      () => buildPlayerUrl(selectedSong?.id),
-      [selectedSong]
-    );
 
     const filteredSongs = useMemo(() => {
       if (!searchQuery.trim()) return SONGS;
@@ -465,7 +437,7 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
 
           {/* Embedded Player */}
           <View style={styles.playerContainer}>
-            {loading && (
+            {loading && webViewUrl !== BLANK_URL && (
               <View style={styles.loadingOverlay}>
                 <ActivityIndicator size="small" color="#E60026" />
                 <Text style={styles.loadingText}>
@@ -474,13 +446,11 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
               </View>
             )}
             <WebView
-              ref={webViewRef}
-              source={{ uri: playerUrl }}
-              style={styles.webview}
+              key={webViewUrl}
+              source={{ uri: webViewUrl }}
+              style={[styles.webview, webViewUrl === BLANK_URL && { opacity: 0 }]}
               onLoadEnd={() => setLoading(false)}
               onLoadStart={() => setLoading(true)}
-              onMessage={handleWebViewMessage}
-              injectedJavaScript={INJECTED_JS}
               allowsInlineMediaPlayback
               mediaPlaybackRequiresUserAction={false}
               javaScriptEnabled
