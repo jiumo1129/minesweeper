@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -30,7 +30,58 @@ export function MiniPlayerBar({
   onPlayPrev,
 }: MiniPlayerBarProps) {
   const slideAnim = useRef(new Animated.Value(70)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
 
+  // Local elapsed time tracker for progress bar
+  const [elapsed, setElapsed] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const songDuration = currentSong?.duration ?? 0;
+
+  // Reset progress when song changes
+  useEffect(() => {
+    setElapsed(0);
+    progressAnim.setValue(0);
+  }, [currentSong?.id, progressAnim]);
+
+  // Start/stop the elapsed timer based on isPlaying
+  useEffect(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    if (isPlaying && songDuration > 0) {
+      intervalRef.current = setInterval(() => {
+        setElapsed((prev) => {
+          const next = prev + 1;
+          if (next >= songDuration) {
+            clearInterval(intervalRef.current!);
+            intervalRef.current = null;
+            return songDuration;
+          }
+          return next;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [isPlaying, songDuration]);
+
+  // Animate progress bar width based on elapsed / duration
+  useEffect(() => {
+    if (songDuration <= 0) return;
+    const ratio = Math.min(elapsed / songDuration, 1);
+    Animated.timing(progressAnim, {
+      toValue: ratio,
+      duration: 800,
+      useNativeDriver: false, // width animation requires non-native driver
+    }).start();
+  }, [elapsed, songDuration, progressAnim]);
+
+  // Slide in/out animation
   useEffect(() => {
     Animated.timing(slideAnim, {
       toValue: visible ? 0 : 70,
@@ -39,14 +90,26 @@ export function MiniPlayerBar({
     }).start();
   }, [visible, slideAnim]);
 
-  const haptic = () => {
+  const haptic = useCallback(() => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-  };
+  }, []);
 
   const songTitle = currentSong?.title ?? "等墨久喜欢的音乐";
   const songArtist = currentSong?.artist ?? "点击选歌";
+
+  // Format mm:ss
+  const fmt = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${String(sec).padStart(2, "0")}`;
+  };
+
+  const progressWidth = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0%", "100%"],
+  });
 
   return (
     <Animated.View
@@ -56,13 +119,13 @@ export function MiniPlayerBar({
       ]}
       pointerEvents={visible ? "auto" : "none"}
     >
-      {/* Top progress indicator line */}
-      <View style={styles.progressLine}>
-        <View style={[styles.progressFill, isPlaying && styles.progressFillPlaying]} />
+      {/* Progress bar */}
+      <View style={styles.progressTrack}>
+        <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
       </View>
 
       <View style={styles.row}>
-        {/* Tap left area to open full player */}
+        {/* Left: tap to open full player */}
         <Pressable
           onPress={() => { haptic(); onOpenPlayer(); }}
           style={({ pressed }) => [styles.infoArea, pressed && styles.pressed]}
@@ -76,6 +139,12 @@ export function MiniPlayerBar({
               {isPlaying ? `▶ ${songArtist}` : songArtist}
             </Text>
           </View>
+          {/* Time display */}
+          {songDuration > 0 && (
+            <Text style={styles.timeText}>
+              {fmt(elapsed)}/{fmt(songDuration)}
+            </Text>
+          )}
         </Pressable>
 
         {/* Controls */}
@@ -127,18 +196,14 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 8,
   },
-  progressLine: {
+  progressTrack: {
     height: 2,
     backgroundColor: "#2a2a3a",
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
-    width: "0%",
     backgroundColor: "#E60026",
-  },
-  progressFillPlaying: {
-    width: "40%",
   },
   row: {
     flexDirection: "row",
@@ -183,6 +248,12 @@ const styles = StyleSheet.create({
   songArtist: {
     color: "#888",
     fontSize: 11,
+  },
+  timeText: {
+    color: "#666",
+    fontSize: 10,
+    minWidth: 72,
+    textAlign: "right",
   },
   controls: {
     flexDirection: "row",

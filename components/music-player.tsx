@@ -129,9 +129,15 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
     const [currentIndex, setCurrentIndex] = useState<number>(-1);
     const [searchQuery, setSearchQuery] = useState("");
     const [isPlaying, setIsPlaying] = useState(false);
+    const isPlayingRef = useRef(false); // ref to avoid stale closure in useImperativeHandle
     const autoNextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const selectedSong = currentIndex >= 0 ? SONGS[currentIndex] ?? null : null;
+
+    // Keep ref in sync with state to avoid stale closures
+    useEffect(() => {
+      isPlayingRef.current = isPlaying;
+    }, [isPlaying]);
 
     // Clear auto-next timer
     const clearAutoNextTimer = useCallback(() => {
@@ -176,11 +182,13 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         clearAutoNextTimer();
       },
       togglePlay: () => {
-        if (isPlaying) {
+        if (isPlayingRef.current) {
           webViewRef.current?.injectJavaScript(JS_PAUSE);
+          setIsPlaying(false);
           clearAutoNextTimer();
         } else {
           webViewRef.current?.injectJavaScript(JS_PLAY);
+          setIsPlaying(true);
         }
       },
       playNext: () => {
