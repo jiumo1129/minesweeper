@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { MineBoard } from "@/components/mine-board";
+import { PinchZoomBoard } from "@/components/pinch-zoom-board";
 import { useMinesweeper, DIFFICULTY_CONFIGS, type Difficulty } from "@/hooks/use-minesweeper";
 import * as Haptics from "expo-haptics";
 import { useMusicContext } from "@/lib/music-context";
@@ -157,13 +158,15 @@ export default function GameScreen() {
 
         {/* Game Board */}
         <View style={styles.boardWrapper}>
-          <MineBoard
-            board={board}
-            cellSize={cellSize}
-            gameStatus={gameStatus}
-            onCellPress={onCellPress}
-            onCellLongPress={onCellLongPress}
-          />
+          <PinchZoomBoard>
+            <MineBoard
+              board={board}
+              cellSize={cellSize}
+              gameStatus={gameStatus}
+              onCellPress={onCellPress}
+              onCellLongPress={onCellLongPress}
+            />
+          </PinchZoomBoard>
         </View>
 
         {/* Footer: Flag Mode Toggle */}
@@ -198,7 +201,7 @@ export default function GameScreen() {
         </View>
 
         {/* Long press hint */}
-        <Text style={styles.hint}>长按格子可快速插旗 / 取消旗帜</Text>
+        <Text style={styles.hint}>长按插旗 · 双指缩放 · 双击还原</Text>
 
 
         {/* Game Result Overlay */}
