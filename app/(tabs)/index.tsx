@@ -4,6 +4,7 @@ import {
   Text,
   Pressable,
   StyleSheet,
+  ScrollView,
   useWindowDimensions,
   Platform,
 } from "react-native";
@@ -46,21 +47,19 @@ export default function GameScreen() {
     toggleFlagMode,
   } = useMinesweeper();
 
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
 
   // Music context — controls the global floating music player
-  const { showMiniBar, openMusic } = useMusicContext();
+  const { showMiniBar } = useMusicContext();
 
-  const MINI_BAR_HEIGHT = 54;
+  const MINI_BAR_HEIGHT = 56;
 
   const cellSize = useMemo(() => {
-    const horizontalPadding = 16;
+    const horizontalPadding = 24; // 6px padding each side * 2 + 3px border * 2
     const maxCellByWidth = Math.floor((width - horizontalPadding) / config.cols);
-    const reservedHeight = 220 + (showMiniBar ? MINI_BAR_HEIGHT : 0);
-    const maxCellByHeight = Math.floor((height - reservedHeight) / config.rows);
-    const size = Math.min(maxCellByWidth, maxCellByHeight, 36);
+    const size = Math.min(maxCellByWidth, 36);
     return Math.max(size, 18);
-  }, [width, height, config.rows, config.cols, showMiniBar]);
+  }, [width, config.cols]);
 
   const onCellPress = useCallback(
     (row: number, col: number) => {
@@ -110,7 +109,16 @@ export default function GameScreen() {
       safeAreaClassName="bg-[#C0C0C0]"
       edges={["top", "left", "right", "bottom"]}
     >
-      <View style={styles.container}>
+      <View style={styles.outerWrapper}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.container,
+          showMiniBar && { paddingBottom: MINI_BAR_HEIGHT + 4 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Header: Status Panel */}
         <View style={styles.statusPanel}>
           <View style={styles.ledDisplay}>
@@ -170,7 +178,7 @@ export default function GameScreen() {
         </View>
 
         {/* Footer: Flag Mode Toggle */}
-        <View style={[styles.footer, showMiniBar && styles.footerWithMiniBar]}>
+        <View style={styles.footer}>
           <Pressable
             onPress={onToggleFlagMode}
             style={({ pressed }) => [
@@ -204,7 +212,9 @@ export default function GameScreen() {
         <Text style={styles.hint}>长按插旗 · 双指缩放 · 双击还原</Text>
 
 
-        {/* Game Result Overlay */}
+      </ScrollView>
+
+        {/* Game Result Overlay — outside ScrollView so absoluteFill covers the screen */}
         {(gameStatus === "won" || gameStatus === "lost") && (
           <View style={styles.resultOverlay} pointerEvents="none">
             <View style={styles.resultBox}>
@@ -226,11 +236,16 @@ export default function GameScreen() {
   );
 }
 
-const MINI_BAR_HEIGHT = 54;
-
 const styles = StyleSheet.create({
-  container: {
+  outerWrapper: {
     flex: 1,
+    backgroundColor: "#C0C0C0",
+  },
+  scrollView: {
+    flex: 1,
+    backgroundColor: "#C0C0C0",
+  },
+  container: {
     backgroundColor: "#C0C0C0",
     paddingHorizontal: 6,
     paddingTop: 6,
@@ -333,9 +348,8 @@ const styles = StyleSheet.create({
   },
 
   boardWrapper: {
-    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     borderWidth: 3,
     borderTopColor: "#808080",
     borderLeftColor: "#808080",
@@ -343,15 +357,13 @@ const styles = StyleSheet.create({
     borderRightColor: "#FFFFFF",
     backgroundColor: "#C0C0C0",
     marginBottom: 6,
+    overflow: "hidden",
   },
 
   footer: {
     flexDirection: "row",
     gap: 6,
     marginBottom: 4,
-  },
-  footerWithMiniBar: {
-    marginBottom: MINI_BAR_HEIGHT + 4,
   },
   modeButton: {
     flex: 1,
