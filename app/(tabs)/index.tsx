@@ -32,6 +32,8 @@ function getFaceEmoji(status: string): string {
   return "🙂";
 }
 
+const MINI_BAR_HEIGHT = 54;
+
 export default function GameScreen() {
   const {
     board,
@@ -49,15 +51,25 @@ export default function GameScreen() {
 
   const { width, height } = useWindowDimensions();
 
+  // Music state
+  const [musicVisible, setMusicVisible] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentSong, setCurrentSong] = useState<Song | null>(null);
+  const [hasEverPlayed, setHasEverPlayed] = useState(false);
+  const musicPlayerRef = useRef<MusicPlayerHandle>(null);
+
+  // Show mini bar when player has been opened before AND music sheet is closed
+  const showMiniBar = hasEverPlayed && !musicVisible;
+
   const cellSize = useMemo(() => {
     const horizontalPadding = 16;
     const maxCellByWidth = Math.floor((width - horizontalPadding) / config.cols);
-    // Reserve space for header + difficulty bar + footer + hint + mini bar + safe padding
-    const reservedHeight = 270;
+    // Reserve: header(~90) + difficulty(~44) + footer(~52) + hint(~22) + minibar + paddings
+    const reservedHeight = 220 + (showMiniBar ? MINI_BAR_HEIGHT : 0);
     const maxCellByHeight = Math.floor((height - reservedHeight) / config.rows);
     const size = Math.min(maxCellByWidth, maxCellByHeight, 36);
     return Math.max(size, 18);
-  }, [width, height, config.rows, config.cols]);
+  }, [width, height, config.rows, config.cols, showMiniBar]);
 
   const onCellPress = useCallback(
     (row: number, col: number) => {
@@ -100,13 +112,6 @@ export default function GameScreen() {
     toggleFlagMode();
   }, [toggleFlagMode]);
 
-  // Music state
-  const [musicVisible, setMusicVisible] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentSong, setCurrentSong] = useState<Song | null>(null);
-  const [hasEverPlayed, setHasEverPlayed] = useState(false);
-  const musicPlayerRef = useRef<MusicPlayerHandle>(null);
-
   const onOpenMusic = useCallback(() => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -128,9 +133,6 @@ export default function GameScreen() {
     musicPlayerRef.current?.togglePlay();
   }, []);
 
-  // Show mini bar when: player has been opened before AND music sheet is closed
-  const showMiniBar = hasEverPlayed && !musicVisible;
-
   return (
     <>
       <ScreenContainer
@@ -138,6 +140,7 @@ export default function GameScreen() {
         safeAreaClassName="bg-[#C0C0C0]"
         edges={["top", "left", "right", "bottom"]}
       >
+        {/* Main game layout */}
         <View style={styles.container}>
           {/* Header: Status Panel */}
           <View style={styles.statusPanel}>
@@ -196,7 +199,7 @@ export default function GameScreen() {
           </View>
 
           {/* Footer: Flag Mode Toggle */}
-          <View style={styles.footer}>
+          <View style={[styles.footer, showMiniBar && styles.footerWithMiniBar]}>
             <Pressable
               onPress={onToggleFlagMode}
               style={({ pressed }) => [
@@ -260,16 +263,16 @@ export default function GameScreen() {
             </View>
           )}
         </View>
-      </ScreenContainer>
 
-      {/* Mini Player Bar — slides up from bottom when music is playing and sheet is closed */}
-      <MiniPlayerBar
-        visible={showMiniBar}
-        isPlaying={isPlaying}
-        currentSong={currentSong}
-        onTogglePlay={onMiniTogglePlay}
-        onOpenPlayer={onOpenMusic}
-      />
+        {/* Mini Player Bar — inside ScreenContainer so absolute positioning works correctly */}
+        <MiniPlayerBar
+          visible={showMiniBar}
+          isPlaying={isPlaying}
+          currentSong={currentSong}
+          onTogglePlay={onMiniTogglePlay}
+          onOpenPlayer={onOpenMusic}
+        />
+      </ScreenContainer>
 
       {/* Music Player — always mounted after first open, WebView persists for continuous playback */}
       <MusicPlayer
@@ -307,7 +310,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 
-  // LED Display (mine counter & timer)
+  // LED Display
   ledDisplay: {
     backgroundColor: "#000",
     paddingHorizontal: 6,
@@ -409,6 +412,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
     marginBottom: 4,
+  },
+  footerWithMiniBar: {
+    marginBottom: MINI_BAR_HEIGHT + 4,
   },
   modeButton: {
     flex: 1,
