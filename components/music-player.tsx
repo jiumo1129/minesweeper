@@ -1,33 +1,45 @@
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
   Modal,
   Pressable,
   StyleSheet,
-  Animated,
   Platform,
   Dimensions,
   ActivityIndicator,
+  FlatList,
+  TextInput,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import {
+  SONGS,
+  PLAYLIST_NAME,
+  PLAYLIST_COVER,
+  PLAYLIST_SONG_COUNT,
+  type Song,
+} from "@/constants/playlist";
 
-const PLAYLIST_ID = "2116638139";
-const PLAYER_URL = `https://music.163.com/outchain/player?type=0&id=${PLAYLIST_ID}&auto=0&height=430`;
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
-const SONGS = [
-  { title: "相思遥", artist: "张含韵" },
-  { title: "山阴路的夏天", artist: "秋大清" },
-  { title: "Rain after Summer", artist: "羽肿" },
-  { title: "雪の進軍", artist: "あんこうチーム" },
-  { title: "不就是一起长大", artist: "Max马俊/Maxson马颢睿" },
-  { title: "小酒歌", artist: "郝云/梁龙/臧鸿飞" },
-];
+// Format seconds to mm:ss
+function formatDuration(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
-const COVER_URL =
-  "https://p1.music.126.net/XV0em4r9JLkC-0utEVNDaw==/109951170591164326.jpg?param=90y90";
+// Build player URL for a specific song or the full playlist
+function buildPlayerUrl(songId?: number): string {
+  if (songId) {
+    // Single song player
+    return `https://music.163.com/outchain/player?type=2&id=${songId}&auto=1&height=66`;
+  }
+  // Full playlist player
+  return `https://music.163.com/outchain/player?type=0&id=2116638139&auto=0&height=66`;
+}
 
 interface MusicPlayerProps {
   visible: boolean;
@@ -38,7 +50,8 @@ export function MusicPlayer({ visible, onClose }: MusicPlayerProps) {
   const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const [selectedSong, setSelectedSong] = useState<Song | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleClose = useCallback(() => {
     if (Platform.OS !== "web") {
@@ -47,8 +60,76 @@ export function MusicPlayer({ visible, onClose }: MusicPlayerProps) {
     onClose();
   }, [onClose]);
 
-  const { height: screenHeight } = Dimensions.get("window");
-  const sheetHeight = Math.min(screenHeight * 0.78, 600);
+  const handleSelectSong = useCallback((song: Song) => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setSelectedSong(song);
+    setLoading(true);
+  }, []);
+
+  const handlePlayAll = useCallback(() => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setSelectedSong(null);
+    setLoading(true);
+  }, []);
+
+  const playerUrl = useMemo(
+    () => buildPlayerUrl(selectedSong?.id),
+    [selectedSong]
+  );
+
+  // Filter songs by search query
+  const filteredSongs = useMemo(() => {
+    if (!searchQuery.trim()) return SONGS;
+    const q = searchQuery.toLowerCase();
+    return SONGS.filter(
+      (s) =>
+        s.title.toLowerCase().includes(q) ||
+        s.artist.toLowerCase().includes(q) ||
+        s.album.toLowerCase().includes(q)
+    );
+  }, [searchQuery]);
+
+  const sheetHeight = Math.min(SCREEN_HEIGHT * 0.88, 700);
+
+  const renderSongItem = useCallback(
+    ({ item, index }: { item: Song; index: number }) => {
+      const isSelected = selectedSong?.id === item.id;
+      return (
+        <Pressable
+          onPress={() => handleSelectSong(item)}
+          style={({ pressed }) => [
+            styles.songItem,
+            isSelected && styles.songItemSelected,
+            pressed && styles.songItemPressed,
+          ]}
+        >
+          <Text style={[styles.songIndex, isSelected && styles.songIndexSelected]}>
+            {isSelected ? "▶" : String(index + 1)}
+          </Text>
+          <View style={styles.songInfo}>
+            <Text
+              style={[styles.songTitle, isSelected && styles.songTitleSelected]}
+              numberOfLines={1}
+            >
+              {item.title}
+            </Text>
+            <Text style={styles.songMeta} numberOfLines={1}>
+              {item.artist}
+              {item.album ? ` · ${item.album}` : ""}
+            </Text>
+          </View>
+          <Text style={styles.songDuration}>{formatDuration(item.duration)}</Text>
+        </Pressable>
+      );
+    },
+    [selectedSong, handleSelectSong]
+  );
+
+  const keyExtractor = useCallback((item: Song) => String(item.id), []);
 
   return (
     <Modal
@@ -59,34 +140,29 @@ export function MusicPlayer({ visible, onClose }: MusicPlayerProps) {
       onRequestClose={handleClose}
     >
       <View style={styles.overlay}>
-        {/* Backdrop tap to close */}
+        {/* Backdrop */}
         <Pressable style={styles.backdrop} onPress={handleClose} />
 
         {/* Bottom Sheet */}
-        <View
-          style={[
-            styles.sheet,
-            { height: sheetHeight, paddingBottom: insets.bottom + 8 },
-          ]}
-        >
+        <View style={[styles.sheet, { height: sheetHeight, paddingBottom: insets.bottom + 4 }]}>
           {/* Handle Bar */}
           <View style={styles.handleBar} />
 
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              {/* Cover thumbnail */}
-              <WebView
-                source={{ uri: COVER_URL }}
-                style={styles.coverThumb}
-                scrollEnabled={false}
-                pointerEvents="none"
-              />
+              <View style={styles.coverContainer}>
+                <Text style={styles.coverEmoji}>🎵</Text>
+              </View>
               <View style={styles.headerInfo}>
                 <Text style={styles.playlistName} numberOfLines={1}>
-                  等墨久喜欢的音乐
+                  {PLAYLIST_NAME}
                 </Text>
-                <Text style={styles.songCount}>{SONGS.length} 首歌曲</Text>
+                <Text style={styles.songCount}>
+                  {searchQuery
+                    ? `${filteredSongs.length} / ${PLAYLIST_SONG_COUNT} 首`
+                    : `共 ${PLAYLIST_SONG_COUNT} 首歌曲`}
+                </Text>
               </View>
             </View>
             <Pressable onPress={handleClose} style={styles.closeBtn}>
@@ -94,22 +170,61 @@ export function MusicPlayer({ visible, onClose }: MusicPlayerProps) {
             </Pressable>
           </View>
 
-          {/* Song list preview */}
-          <View style={styles.songList}>
-            {SONGS.map((song, i) => (
-              <View key={i} style={styles.songItem}>
-                <Text style={styles.songIndex}>{i + 1}</Text>
-                <View style={styles.songInfo}>
-                  <Text style={styles.songTitle} numberOfLines={1}>
-                    {song.title}
-                  </Text>
-                  <Text style={styles.songArtist} numberOfLines={1}>
-                    {song.artist}
-                  </Text>
-                </View>
-              </View>
-            ))}
+          {/* Search Bar */}
+          <View style={styles.searchBar}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="搜索歌曲、歌手、专辑..."
+              placeholderTextColor="#666"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && Platform.OS !== "ios" && (
+              <Pressable onPress={() => setSearchQuery("")} style={styles.clearBtn}>
+                <Text style={styles.clearBtnText}>✕</Text>
+              </Pressable>
+            )}
           </View>
+
+          {/* Play All Button */}
+          {!searchQuery && (
+            <Pressable
+              onPress={handlePlayAll}
+              style={({ pressed }) => [
+                styles.playAllBtn,
+                pressed && styles.playAllBtnPressed,
+              ]}
+            >
+              <Text style={styles.playAllIcon}>▶</Text>
+              <Text style={styles.playAllText}>播放全部</Text>
+              <Text style={styles.playAllCount}>{PLAYLIST_SONG_COUNT} 首</Text>
+            </Pressable>
+          )}
+
+          {/* Song List */}
+          <FlatList
+            data={filteredSongs}
+            renderItem={renderSongItem}
+            keyExtractor={keyExtractor}
+            style={styles.songList}
+            showsVerticalScrollIndicator={false}
+            initialNumToRender={20}
+            maxToRenderPerBatch={30}
+            windowSize={10}
+            getItemLayout={(_, index) => ({
+              length: 52,
+              offset: 52 * index,
+              index,
+            })}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>没有找到相关歌曲</Text>
+              </View>
+            }
+          />
 
           {/* Divider */}
           <View style={styles.divider} />
@@ -118,13 +233,15 @@ export function MusicPlayer({ visible, onClose }: MusicPlayerProps) {
           <View style={styles.playerContainer}>
             {loading && (
               <View style={styles.loadingOverlay}>
-                <ActivityIndicator size="large" color="#E60026" />
-                <Text style={styles.loadingText}>加载播放器中...</Text>
+                <ActivityIndicator size="small" color="#E60026" />
+                <Text style={styles.loadingText}>
+                  {selectedSong ? `加载「${selectedSong.title}」...` : "加载播放器..."}
+                </Text>
               </View>
             )}
             <WebView
               ref={webViewRef}
-              source={{ uri: PLAYER_URL }}
+              source={{ uri: playerUrl }}
               style={styles.webview}
               onLoadEnd={() => setLoading(false)}
               onLoadStart={() => setLoading(true)}
@@ -132,18 +249,13 @@ export function MusicPlayer({ visible, onClose }: MusicPlayerProps) {
               mediaPlaybackRequiresUserAction={false}
               javaScriptEnabled
               domStorageEnabled
-              startInLoadingState={false}
-              // Allow mixed content for music streaming
               mixedContentMode="always"
-              // User agent to avoid mobile redirect
               userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             />
           </View>
 
-          {/* Open in NetEase hint */}
-          <Text style={styles.hint}>
-            🎵 由网易云音乐提供 · 需联网播放
-          </Text>
+          {/* Footer hint */}
+          <Text style={styles.hint}>🎵 网易云音乐 · 需联网播放</Text>
         </View>
       </View>
     </Modal>
@@ -154,27 +266,25 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: "flex-end",
-    backgroundColor: "transparent",
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
   sheet: {
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#141420",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: "hidden",
-    paddingHorizontal: 0,
   },
   handleBar: {
-    width: 40,
+    width: 36,
     height: 4,
-    backgroundColor: "#555",
+    backgroundColor: "#444",
     borderRadius: 2,
     alignSelf: "center",
     marginTop: 10,
-    marginBottom: 4,
+    marginBottom: 2,
   },
 
   // Header
@@ -191,11 +301,16 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 10,
   },
-  coverThumb: {
+  coverContainer: {
     width: 44,
     height: 44,
-    borderRadius: 6,
-    backgroundColor: "#333",
+    borderRadius: 8,
+    backgroundColor: "#E60026",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coverEmoji: {
+    fontSize: 22,
   },
   headerInfo: {
     flex: 1,
@@ -206,70 +321,151 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   songCount: {
-    color: "#999",
+    color: "#888",
     fontSize: 12,
     marginTop: 2,
   },
   closeBtn: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#333",
-    borderRadius: 16,
+    backgroundColor: "#2a2a3a",
+    borderRadius: 15,
   },
   closeBtnText: {
-    color: "#CCC",
-    fontSize: 14,
+    color: "#AAA",
+    fontSize: 13,
     fontWeight: "600",
   },
 
-  // Song list
-  songList: {
+  // Search
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: "#1e1e2e",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  searchIcon: {
+    fontSize: 14,
+  },
+  searchInput: {
+    flex: 1,
+    color: "#EEE",
+    fontSize: 13,
+    paddingVertical: 2,
+  },
+  clearBtn: {
+    padding: 4,
+  },
+  clearBtnText: {
+    color: "#666",
+    fontSize: 12,
+  },
+
+  // Play All
+  playAllBtn: {
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
-    gap: 4,
+    paddingVertical: 8,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#2a2a3a",
+  },
+  playAllBtnPressed: {
+    backgroundColor: "#1e1e2e",
+  },
+  playAllIcon: {
+    color: "#E60026",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  playAllText: {
+    color: "#EEE",
+    fontSize: 14,
+    fontWeight: "600",
+    flex: 1,
+  },
+  playAllCount: {
+    color: "#666",
+    fontSize: 12,
+  },
+
+  // Song List
+  songList: {
+    flex: 1,
   },
   songItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    height: 52,
     gap: 10,
   },
+  songItemSelected: {
+    backgroundColor: "#1e1e2e",
+  },
+  songItemPressed: {
+    backgroundColor: "#1a1a2a",
+  },
   songIndex: {
-    color: "#666",
+    color: "#555",
     fontSize: 12,
-    width: 18,
+    width: 22,
     textAlign: "center",
+  },
+  songIndexSelected: {
+    color: "#E60026",
+    fontSize: 14,
+    fontWeight: "bold",
   },
   songInfo: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
   },
   songTitle: {
-    color: "#EEE",
-    fontSize: 13,
+    color: "#DDD",
+    fontSize: 14,
     fontWeight: "500",
-    flexShrink: 1,
   },
-  songArtist: {
-    color: "#888",
+  songTitleSelected: {
+    color: "#E60026",
+    fontWeight: "700",
+  },
+  songMeta: {
+    color: "#666",
     fontSize: 11,
-    flexShrink: 1,
+    marginTop: 2,
+  },
+  songDuration: {
+    color: "#555",
+    fontSize: 11,
+    fontVariant: ["tabular-nums"],
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  emptyText: {
+    color: "#555",
+    fontSize: 14,
   },
 
   divider: {
-    height: 1,
-    backgroundColor: "#333",
-    marginHorizontal: 16,
-    marginVertical: 8,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "#2a2a3a",
+    marginHorizontal: 0,
   },
 
   // Player
   playerContainer: {
-    flex: 1,
-    marginHorizontal: 0,
+    height: 80,
     position: "relative",
     backgroundColor: "#fff",
   },
@@ -279,22 +475,23 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#141420",
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
     zIndex: 10,
-    gap: 12,
   },
   loadingText: {
-    color: "#999",
-    fontSize: 14,
+    color: "#888",
+    fontSize: 12,
   },
 
   hint: {
     textAlign: "center",
-    color: "#555",
-    fontSize: 11,
-    paddingVertical: 6,
-    backgroundColor: "#1a1a2e",
+    color: "#444",
+    fontSize: 10,
+    paddingVertical: 4,
+    backgroundColor: "#141420",
   },
 });
