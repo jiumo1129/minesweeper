@@ -211,9 +211,12 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
         }
         setSelectedSong(song);
         setLoading(true);
-        setIsPlaying(false);
+        // Optimistically mark as playing when user selects a song
+        // (WebView audio events are unreliable due to cross-origin iframe)
+        setIsPlaying(true);
+        onPlayStateChange?.(true, song);
       },
-      []
+      [onPlayStateChange]
     );
 
     const handlePlayAll = useCallback(() => {
@@ -222,8 +225,10 @@ export const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(
       }
       setSelectedSong(null);
       setLoading(true);
-      setIsPlaying(false);
-    }, []);
+      // Optimistically mark as playing when user taps Play All
+      setIsPlaying(true);
+      onPlayStateChange?.(true, null);
+    }, [onPlayStateChange]);
 
     const playerUrl = useMemo(
       () => buildPlayerUrl(selectedSong?.id),

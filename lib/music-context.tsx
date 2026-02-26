@@ -31,10 +31,14 @@ export function MusicProvider({ children }: { children: ReactNode }) {
   const [hasEverPlayed, setHasEverPlayed] = useState(false);
   const musicPlayerRef = useRef<MusicPlayerHandle>(null);
 
+  // Show mini bar once user has interacted with the music player (opened it at least once)
+  // and the full player sheet is currently closed
   const showMiniBar = hasEverPlayed && !musicVisible;
 
   const openMusic = useCallback(() => {
     setMusicVisible(true);
+    // Mark as ever-opened so mini bar can appear after closing
+    setHasEverPlayed(true);
   }, []);
 
   const closeMusic = useCallback(() => {
