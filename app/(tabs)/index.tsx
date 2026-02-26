@@ -1,4 +1,5 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import { MusicPlayer } from "@/components/music-player";
 import {
   View,
   Text,
@@ -92,6 +93,15 @@ export default function GameScreen() {
     },
     [resetGame]
   );
+
+  const [musicVisible, setMusicVisible] = useState(false);
+
+  const onOpenMusic = useCallback(() => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setMusicVisible(true);
+  }, []);
 
   const onToggleFlagMode = useCallback(() => {
     if (Platform.OS !== "web") {
@@ -199,6 +209,23 @@ export default function GameScreen() {
 
         {/* Long press hint */}
         <Text style={styles.hint}>长按格子可快速插旗 / 取消旗帜</Text>
+
+        {/* Floating Music Button */}
+        <Pressable
+          onPress={onOpenMusic}
+          style={({ pressed }) => [
+            styles.musicFab,
+            pressed && styles.musicFabPressed,
+          ]}
+        >
+          <Text style={styles.musicFabIcon}>🎵</Text>
+        </Pressable>
+
+        {/* Music Player Modal */}
+        <MusicPlayer
+          visible={musicVisible}
+          onClose={() => setMusicVisible(false)}
+        />
 
         {/* Game Result Overlay */}
         {(gameStatus === "won" || gameStatus === "lost") && (
@@ -385,6 +412,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#666666",
     paddingBottom: 2,
+  },
+
+  // Floating Music Button
+  musicFab: {
+    position: "absolute",
+    right: 12,
+    bottom: 48,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#E60026",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
+    borderWidth: 2,
+    borderTopColor: "#FF4455",
+    borderLeftColor: "#FF4455",
+    borderBottomColor: "#AA0018",
+    borderRightColor: "#AA0018",
+  },
+  musicFabPressed: {
+    backgroundColor: "#CC001F",
+    borderTopColor: "#AA0018",
+    borderLeftColor: "#AA0018",
+    borderBottomColor: "#FF4455",
+    borderRightColor: "#FF4455",
+  },
+  musicFabIcon: {
+    fontSize: 20,
   },
 
   // Result Overlay
